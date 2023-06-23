@@ -1,4 +1,3 @@
-# %%
 import dataclasses
 import logging
 import re
@@ -12,7 +11,7 @@ from transformers import AutoConfig, AutoModelForCausalLM, BertForPreTraining
 import transformer_lens.utils as utils
 from transformer_lens.HookedTransformerConfig import HookedTransformerConfig
 
-# %% The model names used to access the models on the HuggingFace Hub.
+# The model names used to access the models on the HuggingFace Hub.
 OFFICIAL_MODEL_NAMES = [
     "gpt2",
     "gpt2-medium",
@@ -708,7 +707,7 @@ def convert_neel_model_config(official_model_name: str, **kwargs):
 
 
 def get_pretrained_model_config(
-    model_name: str,
+    official_model_name: str,
     checkpoint_index: Optional[int] = None,
     checkpoint_value: Optional[int] = None,
     fold_ln: bool = False,
@@ -742,7 +741,6 @@ def get_pretrained_model_config(
             Also given to other HuggingFace functions when compatible.
 
     """
-    official_model_name = get_official_model_name(model_name)
     if (
         official_model_name.startswith("NeelNanda")
         or official_model_name.startswith("ArthurConmy")
@@ -809,7 +807,7 @@ def get_num_params_of_pretrained(model_name):
     return cfg.n_params
 
 
-# %% Load checkpointed model state dicts
+# Load checkpointed model state dicts
 # The steps for which there are checkpoints in the stanford crfm models
 STANFORD_CRFM_CHECKPOINTS = (
     list(range(0, 100, 10))
@@ -861,9 +859,7 @@ def get_checkpoint_labels(model_name: str, **kwargs):
         raise ValueError(f"Model {official_model_name} is not checkpointed.")
 
 
-# %% Loading state dicts
-
-
+# Loading state dicts
 def get_pretrained_state_dict(
     official_model_name: str,
     cfg: HookedTransformerConfig,

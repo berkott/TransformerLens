@@ -1,6 +1,6 @@
 import logging
 from functools import lru_cache
-from typing import Dict, List, NamedTuple, Optional, Tuple, Union, overload
+from typing import Dict, List, NamedTuple, Optional, Tuple, Union, overload, Callable, Any
 
 import einops
 import numpy as np
@@ -311,7 +311,10 @@ class HookedTransformer(HookedRootModule):
             pos_offset = cache_ctx_length
         if self.cfg.use_hook_tokens:
             tokens = self.hook_tokens(tokens)
-        embed = self.hook_embed(self.embed(tokens))  # [batch, pos, d_model]
+        print(tokens.shape)
+        print(tokens)
+        # embed = self.hook_embed(self.embed(tokens))  # [batch, pos, d_model]
+        embed = tokens  # [batch, pos, d_model] # TODO: Figure out a better way to do this
         if self.cfg.positional_embedding_type == "standard":
             pos_embed = self.hook_pos_embed(
                 self.pos_embed(tokens, pos_offset)
@@ -921,6 +924,104 @@ class HookedTransformer(HookedRootModule):
             refactor_factored_attn_matrices=refactor_factored_attn_matrices,
             **from_pretrained_kwargs,
         )
+    
+    @classmethod
+    def from_custom(
+        cls,
+        model_name: str,
+        custom_model: Any,
+        config: Dict[str, Any],
+        converter: Callable,
+        fold_ln=True,
+        center_writing_weights=True,
+        center_unembed=True,
+        refactor_factored_attn_matrices=False,
+        checkpoint_index=None,
+        checkpoint_value=None,
+        hf_model=None,
+        device=None,
+        n_devices=1,
+        move_state_dict_to_device=True,
+        tokenizer=None,
+        move_to_device=True,
+        **from_pretrained_kwargs,
+    ) -> "HookedTransformer":
+        # Load the config into an HookedTransformerConfig object. If loading from a
+        # checkpoint, the config object will contain the information about the
+        # checkpoint
+        # cfg = loading.get_pretrained_model_config(
+        #     model_name,
+        #     checkpoint_index=checkpoint_index,
+        #     checkpoint_value=checkpoint_value,
+        #     fold_ln=fold_ln,
+        #     device=device,
+        #     n_devices=n_devices,
+        #     **from_pretrained_kwargs,
+        # )
+
+        cfg = HookedTransformerConfig.from_dict({
+            "d_model": 768,
+            "d_head": 64,
+            "n_heads": 12,
+            "d_mlp": 3072,
+            "n_layers": 12,
+            "n_ctx": 1024,
+            "eps": 1e-6,
+            "d_vocab": 50257,
+            "act_fn": "gelu",
+            "use_attn_scale": True,
+            "use_local_attn": False,
+            "scale_attn_by_inverse_layer_idx": False,
+            "normalization_type": "LN",
+            "model_name": model_name,
+            "init_weights": False,
+            "device": device,
+            "n_devices": n_devices,
+        } | config)
+
+        if cfg.positional_embedding_type == "shortformer":
+            if fold_ln:
+                logging.warning(
+                    "You tried to specify fold_ln=True for a shortformer model, but this can't be done! Setting fold_"
+                    "ln=False instead."
+                )
+                fold_ln = False
+            if center_unembed:
+                logging.warning(
+                    "You tried to specify center_unembed=True for a shortformer model, but this can't be done! "
+                    "Setting center_unembed=False instead."
+                )
+                center_unembed = False
+            if center_writing_weights:
+                logging.warning(
+                    "You tried to specify center_writing_weights=True for a shortformer model, but this can't be done! "
+                    "Setting center_writing_weights=False instead."
+                )
+                center_writing_weights = False
+
+        # Get the state dict of the model (ie a mapping of parameter names to tensors), processed to match the
+        # HookedTransformer parameter names.
+        state_dict = converter(custom_model, cfg)
+
+        # Create the HookedTransformer object
+        model = cls(cfg, tokenizer, move_to_device)
+
+        dtype = from_pretrained_kwargs.get("torch_dtype", None)
+        if dtype is not None:
+            model = model.to(dtype)
+
+        model.load_and_process_state_dict(
+            state_dict,
+            fold_ln=fold_ln,
+            center_writing_weights=center_writing_weights,
+            center_unembed=center_unembed,
+            refactor_factored_attn_matrices=refactor_factored_attn_matrices,
+            move_state_dict_to_device=move_state_dict_to_device,
+        )
+
+        print(f"Loaded custom model {model_name} into HookedTransformer")
+
+        return model
 
     def init_weights(self):
         """
@@ -1044,6 +1145,7 @@ class HookedTransformer(HookedRootModule):
             state_dict = self.fold_value_biases(state_dict)
         if refactor_factored_attn_matrices:
             state_dict = self.refactor_factored_attn_matrices(state_dict)
+        print(state_dict)
         self.load_state_dict(state_dict)
 
     def fill_missing_keys(self, state_dict):

@@ -25,12 +25,10 @@ class LensHandle:
     context_level: Optional[int] = None
 
 
-# %%
 # Define type aliases
 NamesFilter = Optional[Union[Callable[[str], bool], Sequence[str]]]
 
 
-# %%
 class HookPoint(nn.Module):
     """
     A helper class to access intermediate activations in a PyTorch model (inspired by Garcon).
@@ -139,7 +137,6 @@ class HookPoint(nn.Module):
         return int(split_name[1])
 
 
-# %%
 class HookedRootModule(nn.Module):
     """
     A class building on nn.Module to interface nicely with HookPoints
